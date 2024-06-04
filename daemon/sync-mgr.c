@@ -540,7 +540,8 @@ is_perm_error (int error)
             error == SYNC_ERROR_ID_NO_WRITE_PERMISSION ||
             error == SYNC_ERROR_ID_PERM_NOT_SYNCABLE ||
             error == SYNC_ERROR_ID_FOLDER_PERM_DENIED ||
-            error == SYNC_ERROR_ID_TOO_MANY_FILES);
+            error == SYNC_ERROR_ID_TOO_MANY_FILES ||
+            error == SYNC_ERROR_ID_QUOTA_FULL);
 }
 
 static void
@@ -653,7 +654,7 @@ set_task_error (SyncTask *task, int error)
          * File-level errors are recorded and notified in the location they happens, not here.
          */
         if (err_level == SYNC_ERROR_LEVEL_REPO)
-            seaf_repo_manager_record_sync_error (task->repo->id, task->repo->name, NULL, error);
+            send_file_sync_error_notification (task->repo->id, task->repo->name, NULL, error);
 
 #ifdef WIN32
         seaf_sync_manager_add_refresh_path (seaf->sync_mgr, task->repo->worktree);
@@ -1497,6 +1498,7 @@ sync_repo_v2 (SeafSyncManager *manager, SeafRepo *repo, gboolean is_manual_sync)
                     set_task_error (task, SYNC_ERROR_ID_DEL_CONFIRMATION_PENDING);
                     // Delete this repo and resync this repo by adding clone task.
                     resync_repo (repo);
+                    ret = -1;
                     goto out;
                 }
                 // User chooes to continue syncing.
@@ -2176,6 +2178,12 @@ check_folder_permissions_one_server (SeafSyncManager *mgr,
         server_state->checking_folder_perms)
         return;
 
+    if (server_state->immediate_check_folder_perms) {
+        server_state->immediate_check_folder_perms = FALSE;
+        check_folder_permissions_one_server_immediately (mgr, host, server_state, repos, TRUE);
+        return;
+    }
+
     if (server_state->last_check_perms_time > 0 &&
         now - server_state->last_check_perms_time < CHECK_FOLDER_PERMS_INTERVAL)
         return;
@@ -2319,6 +2327,12 @@ check_locked_files_one_server (SeafSyncManager *mgr,
         server_state->locked_files_not_supported ||
         server_state->checking_locked_files)
         return;
+
+    if (server_state->immediate_check_locked_files) {
+        server_state->immediate_check_locked_files = FALSE;
+        check_locked_files_one_server_immediately (mgr, host, server_state, repos, TRUE);
+        return;
+    }
 
     if (server_state->last_check_locked_files_time > 0 &&
         now - server_state->last_check_locked_files_time < CHECK_FOLDER_PERMS_INTERVAL)
@@ -2606,13 +2620,15 @@ auto_sync_pulse (void *vmanager)
 #endif
 
                 if (repo->sync_interval == 0) {
-                    sync_repo_v2 (manager, repo, FALSE);
+                    if (sync_repo_v2 (manager, repo, FALSE) < 0) 
+                        continue;
 #if defined WIN32 || defined __APPLE__ || defined COMPILE_LINUX_WS
                     check_and_subscribe_repo (manager, repo);
 #endif
                 }
                 else if (periodic_sync_due (repo)) {
-                    sync_repo_v2 (manager, repo, TRUE);
+                    if (sync_repo_v2 (manager, repo, TRUE) < 0)
+                        continue;
 #if defined WIN32 || defined __APPLE__ || defined COMPILE_LINUX_WS
                     check_and_subscribe_repo (manager, repo);
 #endif

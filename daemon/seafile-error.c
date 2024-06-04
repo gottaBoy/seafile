@@ -172,7 +172,7 @@ static SyncErrorInfo sync_error_info_tbl[] = {
     {
         SYNC_ERROR_ID_LIBRARY_TOO_LARGE,
         SYNC_ERROR_LEVEL_REPO,
-        "Library is too large to sync"
+        "Library contains too many files"
     },
     {
         SYNC_ERROR_ID_DEL_CONFIRMATION_PENDING,
@@ -193,6 +193,11 @@ static SyncErrorInfo sync_error_info_tbl[] = {
         SYNC_ERROR_ID_BLOCK_MISSING,
         SYNC_ERROR_LEVEL_REPO,
         "Failed to upload file blocks. Please check network or firewall"
+    },
+    {
+        SYNC_ERROR_ID_CASE_CONFLICT,
+        SYNC_ERROR_LEVEL_FILE,
+        "Path has character case conflict with existing file or folder. Will not be downloaded"
     },
 };
 
